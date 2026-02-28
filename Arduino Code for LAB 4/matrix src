@@ -1,0 +1,60 @@
+
+#include <LedControl.h>
+
+
+// MAX7219 Pins
+#define DIN_PIN 2
+#define CS_PIN 3
+#define CLK_PIN 4
+
+
+LedControl lc = LedControl(DIN_PIN, CLK_PIN, CS_PIN, 1); // 1 matrix
+
+
+// Check mark pattern
+byte checkMark[8] = {
+  B00000000,
+  B00000001,
+  B00000011,
+  B00000110,
+  B01001100,
+  B11111000,
+  B01110000,
+  B00100000
+};
+
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial);
+
+
+  Serial.println("Initializing MAX7219...");
+
+
+  // Initialize MAX7219
+  lc.shutdown(0, false);   // Wake up display
+  lc.setIntensity(0, 5);   // Brightness (0-15)
+  lc.clearDisplay(0);      // Clear display
+
+
+  Serial.println("MAX7219 Initialized.");
+ 
+  // Display check mark
+  displayPattern(checkMark);
+
+
+  Serial.println("Check pattern is now displayed on LED Matrix.");
+}
+
+
+void loop() {
+  // Nothing here
+}
+
+
+void displayPattern(byte pattern[]) {
+  for (int row = 0; row < 8; row++) {
+    lc.setRow(0, row, pattern[row]);
+  }
+}
