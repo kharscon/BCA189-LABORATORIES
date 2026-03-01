@@ -1,110 +1,154 @@
+// ====================== LIBRARIES ======================
+
+// I2C communication library
 #include <Wire.h>
+
+// 16x2 LCD with I2C module
 #include <LiquidCrystal_I2C.h>
+
+// OLED display libraries
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+// SPI communication (required for RFID)
 #include <SPI.h>
+
+// MFRC522 RFID library
 #include <MFRC522.h>
 
 
+// ====================== LCD INITIALIZATION ======================
+
+// LCD I2C address: 0x27
+// 16 columns, 2 rows
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 
+// ====================== OLED INITIALIZATION ======================
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET -1
+#define OLED_RESET -1   // No reset pin used
+
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 
+// ====================== RFID INITIALIZATION ======================
+
+// SPI pins for RFID
 #define SS_PIN 10
 #define RST_PIN 9
+
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 
+// ====================== SETUP FUNCTION ======================
+
 void setup() {
+
+  // Start Serial Monitor
   Serial.begin(9600);
 
-
-  lcd.init();
-  lcd.backlight();
+  // ---------- LCD Setup ----------
+  lcd.init();           // Initialize LCD
+  lcd.backlight();      // Turn on LCD backlight
   lcd.print("Scan RFID Card");
 
-
-  if(!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    while(1);
+  // ---------- OLED Setup ----------
+  if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    // Stop program if OLED is not detected
+    while (1);
   }
 
-
-  SPI.begin();
-  mfrc522.PCD_Init();
-
+  // ---------- RFID Setup ----------
+  SPI.begin();          // Start SPI communication
+  mfrc522.PCD_Init();   // Initialize RFID module
 
   Serial.println("System Ready");
   Serial.println("Scan RFID Card...");
 }
 
 
+// ====================== MAIN LOOP ======================
+
 void loop() {
 
-
+  // Check if a new RFID card is present
   if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
 
+  // Try to read the card
+  if (!mfrc522.PICC_ReadCardSerial()) return;
 
   Serial.println();
   Serial.println("---------------");
   Serial.println("Card Detected!");
 
+  // ====================== GET UID ======================
 
   String uidString = "";
+
+  // Convert UID bytes into HEX string
   for (byte i = 0; i < mfrc522.uid.size; i++) {
+
+    // Add leading zero if needed (e.g., 0A instead of A)
     if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";
+
     uidString += String(mfrc522.uid.uidByte[i], HEX);
   }
-  uidString.toUpperCase();
 
+  uidString.toUpperCase();   // Convert to uppercase
 
   Serial.print("Card UID: ");
   Serial.println(uidString);
 
+  // ====================== DISPLAY UID ON LCD ======================
 
   lcd.clear();
-  lcd.setCursor(0,0);
+  lcd.setCursor(0, 0);
   lcd.print("Card UID:");
-  lcd.setCursor(0,1);
+  lcd.setCursor(0, 1);
   lcd.print(uidString);
 
+  // ====================== DISPLAY RESULT ON OLED ======================
 
   oled.clearDisplay();
   oled.setTextSize(2);
   oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(0,20);
+  oled.setCursor(0, 20);
 
+  // ---------- AUTHORIZED CARD CHECK ----------
 
-  // ✅ UPDATED UID HERE
+  // ✅ Registered UID
   if (uidString == "FB354422") {
+
     Serial.println("User: MICH/KHARA");
+
     oled.println("MICH");
-    oled.setCursor(0,45);
+    oled.setCursor(0, 45);
     oled.println("KHARA");
   }
   else {
+
     Serial.println("Unknown Card");
+
     oled.println("Unknown Card");
   }
 
+  oled.display();   // Update OLED screen
 
-  oled.display();
-  delay(4000);
+  delay(4000);      // Show result for 4 seconds
 
+  // ====================== RESET DISPLAY ======================
 
   Serial.println("Scan RFID Card...");
-
 
   lcd.clear();
   lcd.print("Scan RFID Card");
 
-
   oled.clearDisplay();
   oled.display();
-}
 
+  // Halt RFID card
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+}
