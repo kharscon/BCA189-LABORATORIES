@@ -1,40 +1,29 @@
-MFRC522::MIFARE_Key key;
+#include <SPI.h>          // SPI communication library (used by RFID module)
+#include <MFRC522.h>      // Library for MFRC522 RFID reader
+#include <LedControl.h>   // Library for MAX7219 LED Matrix
 
+// ====================== PIN DEFINITIONS ======================
 
-// Custom patterns for LED matrix
-byte smiley[8] = {
-  B00111100,
-  B01000010,
-  B10100101,
-  B10000001,
-  B10100101,
-  B10011001,
-  B01000010,
-  B00111100#include <SPI.h>
-#include <MFRC522.h>
-#include <LedControl.h>
-
-
-// RFID Pins
-#define SS_PIN 10
-#define RST_PIN 7
-
+// RFID Module Pins
+#define SS_PIN 10         // Slave Select pin for RFID (SDA)
+#define RST_PIN 7         // Reset pin for RFID
 
 // MAX7219 LED Matrix Pins
-#define DIN_PIN 2
-#define CS_PIN 3
-#define CLK_PIN 4
+#define DIN_PIN 2         // Data In pin
+#define CS_PIN 3          // Chip Select pin
+#define CLK_PIN 4         // Clock pin
 
+// ====================== OBJECT INITIALIZATION ======================
 
+// Create RFID object
 MFRC522 rfid(SS_PIN, RST_PIN);
-LedControl lc = LedControl(DIN_PIN, CLK_PIN, CS_PIN, 1); // 1 matrix
 
+// Create LED Matrix object (1 matrix connected)
+LedControl lc = LedControl(DIN_PIN, CLK_PIN, CS_PIN, 1);
 
+// ====================== LED PATTERNS ======================
 
-
-};
-
-
+// Check mark pattern (shown when RFID tag is successfully read)
 byte checkMark[8] = {
   B00000000,
   B00000001,
@@ -46,7 +35,7 @@ byte checkMark[8] = {
   B00100000
 };
 
-
+// Heart pattern (used as ready/startup display)
 byte heart[8] = {
   B00000000,
   B01100110,
@@ -58,7 +47,7 @@ byte heart[8] = {
   B00011000
 };
 
-
+// Cross pattern (shown if RFID module is not detected)
 byte cross[8] = {
   B10000001,
   B01000010,
@@ -70,120 +59,129 @@ byte cross[8] = {
   B10000001
 };
 
+// ====================== SETUP FUNCTION ======================
 
 void setup() {
-  Serial.begin(9600);
-  while (!Serial);
- 
+
+  Serial.begin(9600);     // Start serial communication
+  while (!Serial);        // Wait for serial monitor to open
+
   Serial.println("Starting RFID Reader with LED Matrix...");
- 
-  // Initialize SPI
+
+  // Initialize SPI communication (required for RFID)
   SPI.begin();
- 
-  // Initialize LED Matrix first
-  lc.shutdown(0, false);      // Wake up MAX7219
-  lc.setIntensity(0, 5);      // Reduced brightness to avoid power issues
-  lc.clearDisplay(0);         // Clear display
-  delay(100);                 // Small delay after LED init
- 
-  // Initialize RFID after LED matrix
-  rfid.PCD_Init();
-  delay(100);                 // Small delay after RFID init
- 
-  // Check if RFID module is connected
+
+  // ---------- Initialize LED Matrix ----------
+  lc.shutdown(0, false);   // Wake up MAX7219
+  lc.setIntensity(0, 5);   // Set brightness level (0–15)
+  lc.clearDisplay(0);      // Clear display
+  delay(100);              // Small delay for stability
+
+  // ---------- Initialize RFID Module ----------
+  rfid.PCD_Init();         // Initialize MFRC522
+  delay(100);
+
+  // Check if RFID module is connected properly
   byte version = rfid.PCD_ReadRegister(rfid.VersionReg);
+
   if (version == 0x00 || version == 0xFF) {
     Serial.println("ERROR: RFID module not detected! Check wiring.");
-    displayPattern(cross);    // Show error pattern
-    while(1);
+    displayPattern(cross);   // Show cross pattern if error
+    while (1);               // Stop program
   } else {
     Serial.print("RFID Module detected. Version: 0x");
     Serial.println(version, HEX);
-    displayPattern(smiley);   // Show ready pattern
+
+    displayPattern(heart);   // Show ready pattern
     delay(2000);
     lc.clearDisplay(0);
   }
- 
+
   Serial.println("Place an RFID tag near the reader...");
   showWaitingAnimation();
 }
 
+// ====================== MAIN LOOP ======================
 
 void loop() {
-  // Reduced animation frequency to avoid SPI conflicts
+
   static unsigned long lastAnimation = 0;
   static int animStep = 0;
   static unsigned long lastRFIDCheck = 0;
- 
-  // Update animation less frequently
-  if (millis() - lastAnimation > 1000) { // Changed from 500 to 1000ms
-    showScanningDot(animStep % 32); // Changed from 8 to 32 for smoother animation
+
+  // ---------- LED Scanning Animation ----------
+  if (millis() - lastAnimation > 1000) {
+    showScanningDot(animStep % 32);  // Move dot around border
     animStep++;
     lastAnimation = millis();
   }
- 
-  // Check RFID less frequently to avoid conflicts
-  if (millis() - lastRFIDCheck > 100) { // Check every 100ms
+
+  // ---------- RFID Checking ----------
+  if (millis() - lastRFIDCheck > 100) {
     lastRFIDCheck = millis();
-   
-    // Add debug output
-    Serial.print(".");  // Show that we're checking
-   
-    // Check for RFID card
+
+    Serial.print(".");  // Debug indicator
+
+    // Detect new RFID card
     if (rfid.PICC_IsNewCardPresent()) {
       Serial.println("\nCard present detected!");
-     
+
       if (rfid.PICC_ReadCardSerial()) {
+
         Serial.println("Card read successfully!");
-       
-        // Stop animations during card reading
+
         lc.clearDisplay(0);
-        displayPattern(checkMark);
-       
+        displayPattern(checkMark);   // Show success pattern
+
         Serial.println("*** RFID Tag Detected ***");
-       
+
+        // Get card type
         MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
-       
+
         Serial.print("Card Type: ");
         Serial.println(rfid.PICC_GetTypeName(piccType));
-       
+
+        // Print UID in HEX format
         Serial.print("RFID Tag UID:");
         printHex(rfid.uid.uidByte, rfid.uid.size);
         Serial.println();
-       
-        // Display UID on matrix
+
         delay(1000);
+
+        // Show UID-based pattern
         displayUIDPattern();
-       
+
         Serial.println("*** End ***");
         Serial.println();
-       
-        delay(3000); // Show pattern for 3 seconds
+
+        delay(3000);
         lc.clearDisplay(0);
-       
+
+        // Stop reading
         rfid.PICC_HaltA();
         rfid.PCD_StopCrypto1();
-       
-        // Reset animation
+
         animStep = 0;
-      } else {
+      }
+      else {
         Serial.println("\nFailed to read card serial");
       }
     }
   }
 }
 
+// ====================== DISPLAY FUNCTIONS ======================
 
+// Display a full 8x8 pattern
 void displayPattern(byte pattern[]) {
   for (int row = 0; row < 8; row++) {
     lc.setRow(0, row, pattern[row]);
   }
-  delayMicroseconds(100); // Small delay between SPI operations
+  delayMicroseconds(100);
 }
 
-
+// Startup animation (fills rows one by one)
 void showWaitingAnimation() {
-  // Show a brief startup animation
   for (int i = 0; i < 8; i++) {
     lc.setRow(0, i, B11111111);
     delay(100);
@@ -192,11 +190,11 @@ void showWaitingAnimation() {
   lc.clearDisplay(0);
 }
 
-
+// Moving dot around border (scanning effect)
 void showScanningDot(int position) {
-  // Don't clear display every time - just update the dot
+
   static int lastPos = -1;
- 
+
   // Clear previous dot
   if (lastPos >= 0) {
     if (lastPos < 8) {
@@ -209,9 +207,10 @@ void showScanningDot(int position) {
       lc.setLed(0, 7 - (lastPos - 24), 0, false);
     }
   }
- 
-  // Set new dot position
+
   position = position % 32;
+
+  // Set new dot position
   if (position < 8) {
     lc.setLed(0, 0, position, true);
   } else if (position < 16) {
@@ -221,35 +220,31 @@ void showScanningDot(int position) {
   } else {
     lc.setLed(0, 7 - (position - 24), 0, true);
   }
- 
+
   lastPos = position;
-  delayMicroseconds(100); // Small delay after LED operation
+  delayMicroseconds(100);
 }
 
-
+// Generate diagonal pattern based on last UID byte
 void displayUIDPattern() {
+
   lc.clearDisplay(0);
- 
-  // Create a unique pattern based on UID
+
   byte lastByte = rfid.uid.uidByte[rfid.uid.size - 1];
- 
+
   for (int i = 0; i < 8; i++) {
     if (lastByte & (1 << i)) {
       lc.setLed(0, i, i, true);
-      lc.setLed(0, 7-i, 7-i, true);
+      lc.setLed(0, 7 - i, 7 - i, true);
     }
   }
   delayMicroseconds(100);
 }
 
-
+// Print UID in HEX format
 void printHex(byte *buffer, byte bufferSize) {
   for (byte i = 0; i < bufferSize; i++) {
     Serial.print(buffer[i] < 0x10 ? " 0" : " ");
     Serial.print(buffer[i], HEX);
   }
 }
-
-
-
-
